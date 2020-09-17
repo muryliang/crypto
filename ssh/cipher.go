@@ -99,6 +99,7 @@ func streamCipherMode(skip int, createFunc func(key, iv []byte) (cipher.Stream, 
 var cipherModes = map[string]*cipherMode{
 	// Ciphers from RFC4344, which introduced many CTR-based ciphers. Algorithms
 	// are defined in the order specified in the RFC.
+    "none": {0, 0, newNoneCipher},
 	"aes128-ctr": {16, aes.BlockSize, streamCipherMode(0, newAESCTR)},
 	"aes192-ctr": {24, aes.BlockSize, streamCipherMode(0, newAESCTR)},
 	"aes256-ctr": {32, aes.BlockSize, streamCipherMode(0, newAESCTR)},
@@ -129,6 +130,51 @@ var cipherModes = map[string]*cipherMode{
 	// config.
 	tripledescbcID: {24, des.BlockSize, newTripleDESCBCCipher},
 }
+
+func newNoneCipher(key, iv, unusedMacKey []byte, unusedAlgs directionAlgorithms) (packetCipher, error) {
+    return &nonePacketCipher{cipher: noneCipher{}}, nil
+}
+
+type nonePacketCipher struct {
+	cipher cipher.Stream
+    prefix  [4]byte
+    buf     []byte
+}
+
+func (s *nonePacketCipher) readCipherPacket(seqNum uint32, r io.Reader) ([]byte, error) {
+	if _, err := io.ReadFull(r, s.prefix[:]); err != nil {
+		return nil, err
+	}
+	length := binary.BigEndian.Uint32(s.prefix[:])
+	if length > maxPacket {
+		return nil, errors.New("ssh: max packet length exceeded")
+	}
+
+    s.buf = make([]byte, length)
+
+	if _, err := io.ReadFull(r, s.buf); err != nil {
+		return nil, err
+	}
+
+    return s.buf[:], nil
+}
+
+func (s *nonePacketCipher) writeCipherPacket(seqNum uint32, w io.Writer, rand io.Reader, packet []byte) error {
+    length := len(packet)
+	binary.BigEndian.PutUint32(s.prefix[:], uint32(length))
+	if _, err := w.Write(s.prefix[:]); err != nil {
+		return err
+	}
+
+    s.buf = make([]byte, length)
+
+	copy(s.buf, packet)
+	if _, err := w.Write(s.buf); err != nil {
+		return err
+	}
+    return nil
+}
+
 
 // prefixLen is the length of the packet prefix that contains the packet length
 // and number of padding bytes.
