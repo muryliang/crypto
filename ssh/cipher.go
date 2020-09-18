@@ -160,7 +160,6 @@ func (s *nonePacketCipher) readCipherPacket(seqNum uint32, r io.Reader) ([]byte,
 }
 
 func (s *nonePacketCipher) writeCipherPacket(seqNum uint32, w io.Writer, rand io.Reader, packet []byte) error {
-    fmt.Printf("before write:%#v\n", packet)
     length := len(packet)
 	binary.BigEndian.PutUint32(s.prefix[:], uint32(length))
 	if _, err := w.Write(s.prefix[:]); err != nil {
